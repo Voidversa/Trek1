@@ -113,7 +113,7 @@ async function pForm(id){if(!me){location.hash='#/login';return ''}
   <button>Сохранить</button></form>`+(E?`<div class="panel"><h3>Вакансии</h3>${p.vacancies.map(v=>vrow(v,v.id,`<button type="button" onclick="saveVac(${v.id},this.closest('.vr'))">Сохранить</button> <button type="button" class="r" onclick="confirm('Удалить вакансию?')&&run(api('DELETE','/vacancies/${v.id}'),'Удалено')">Удалить</button>`)).join('')}
   <h3>Новая вакансия</h3><div id="nv">${vrow({},'n',`<button type="button" onclick="run(api('POST','/projects/${id}/vacancies',rd(this.closest('.vr'))),'Вакансия добавлена')">Добавить</button>`)}</div><a href="#/p/${id}">← К проекту</a></div>`:'')}
 const saveVac=(id,el)=>run(api('PUT','/vacancies/'+id,rd(el)),'Вакансия сохранена');
-function saveProject(id){const f=$('#pf'),b={title:f.title.value,description:f.description.value,goal:f.goal.value,category:f.category.value};
+function saveProject(id){const f=$('#pf'),b={title:f.title.value,description:f.querySelector('textarea[name=description]').value,goal:f.goal.value,category:f.category.value};
   if(id)return run(api('PUT','/projects/'+id,b),'Сохранено');
   b.publish=f.publish.checked;b.vacancies=[...document.querySelectorAll('#vrows .vr')].map(rd).filter(v=>v.role.trim());
   run(api('POST','/projects',b),'Проект создан',r=>{location.hash='#/p/'+r.id})}
