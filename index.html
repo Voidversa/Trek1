@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Найди команду</title>
+<style>
+:root{--bg:#f6f7f9;--c:#fff;--t:#1d2430;--m:#667085;--a:#4f46e5;--b:#e4e7ec;--ok:#067647;--no:#b42318;--w:#b54708}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--c:#1b202b;--t:#e8ebf1;--m:#98a2b3;--a:#8b85ff;--b:#2b3242;--ok:#47cd89;--no:#f97066;--w:#fdb022}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--t)}
+a{color:var(--a);text-decoration:none}h1{font-size:24px;margin:.3em 0}h3{margin:.4em 0}p{margin:.4em 0}
+header{background:var(--c);border-bottom:1px solid var(--b);padding:10px 20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+header b{font-size:18px;margin-right:auto}main{max-width:960px;margin:0 auto;padding:20px}
+.panel,.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:16px;margin:0 0 14px;display:block;color:var(--t)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.grid .card{margin:0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.m{color:var(--m);font-size:13px}
+.b{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;border:1px solid currentColor}
+.open,.accepted{color:var(--ok)}.closed,.rejected{color:var(--no)}.full,.pending{color:var(--w)}.withdrawn{color:var(--m)}
+.tag{display:inline-block;background:var(--bg);border:1px solid var(--b);border-radius:6px;padding:1px 8px;margin:2px 4px 2px 0;font-size:13px}
+input,select,textarea,button,.btn{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--b);background:var(--c);color:var(--t)}
+textarea{width:100%;min-height:70px}form input:not([type=checkbox]),form select{width:100%;margin:4px 0}
+button,.btn{background:var(--a);color:#fff;border-color:var(--a);cursor:pointer;display:inline-block}
+button.g,.btn.g{background:none;color:var(--a)}button.r{background:var(--no);border-color:var(--no)}
+.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:14px}
+@media(max-width:760px){.filters{grid-template-columns:1fr 1fr}}
+fieldset{border:1px solid var(--b);border-radius:10px;margin:8px 0}.err{color:var(--no)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:10px;background:var(--ok);color:#fff;display:none}
+#toast.e{background:var(--no)}
+</style></head><body>
+<header><b>🤝 Найди команду</b><nav class="row" id="nav"></nav></header>
+<main id="app"></main><div id="toast"></div>
+<script>
+const CATS=['Технологии','Образование','Социальные проекты','Творчество','Бизнес','Другое'];
+const ST={pending:'На рассмотрении',accepted:'Принята',rejected:'Отклонена',withdrawn:'Отозвана'};
+const RS={open:'Набор открыт',closed:'Набор закрыт',full:'Мест нет'};
+const BLK={login:'Войдите, чтобы подать заявку.',author:'Это ваш проект.',member:'Вы уже в составе проекта.',pending:'У вас уже есть заявка на рассмотрении.',closed:'Набор закрыт.',full:'Свободных мест нет.'};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const badge=(k,t)=>`<span class="b ${k}">${esc(t)}</span>`, $=s=>document.querySelector(s), app=$('#app');
+const DEF={q:'',category:'',skill:'',status:'',sort:'new'};let me=null,F={...DEF};
+async function api(m,u,b){const r=await fetch('/api'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Ошибка');return d}
+function toast(t,e){const x=$('#toast');x.textContent=t;x.className=e?'e':'';x.style.display='block';setTimeout(()=>x.style.display='none',2800)}
+async function run(p,ok,after){try{const r=await p;if(ok)toast(ok);after?after(r):route()}catch(e){toast(e.message,1)}}
+const list=s=>(s||'').split(',').filter(x=>x.trim()).map(x=>`<span class="tag">${esc(x.trim())}</span>`).join('');
+const opts=(a,v,all)=>(all?`<option value="">${all}</option>`:'')+a.map(x=>`<option ${x==v?'selected':''}>${esc(x)}</option>`).join('');
+
+async function route(){
+  me=(await api('GET','/me')).user;
+  $('#nav').innerHTML='<a href="#/">Каталог</a>'+(me?`<a href="#/my">Мои проекты и заявки</a><a href="#/new">+ Проект</a><a href="#/profile">${esc(me.name)}</a><button class="g" onclick="run(api('POST','/logout'),0,()=>{location.hash='#/';route()})">Выйти</button>`:'<a href="#/login">Вход / регистрация</a>');
+  const [pg,id]=location.hash.slice(2).split('/');
+  try{app.innerHTML=await({'':pCatalog,p:pProject,login:pLogin,profile:pProfile,my:pMy,new:pForm,edit:pForm,u:pUser}[pg||'']||pCatalog)(id)}
+  catch(e){app.innerHTML=`<div class="panel err">${esc(e.message)} <a href="#/">В каталог</a></div>`}
+}
+addEventListener('hashchange',route);route();
+
+// ---- каталог ----
+function card(p){return `<a class="card" href="#/p/${p.id}"><div class="row">${badge(p.status,RS[p.status])}<span class="m">${esc(p.category)}</span></div><h3>${esc(p.title)}</h3><p>${esc(p.short)}</p><div class="m">Автор: ${esc(p.author)}</div><div>${p.vacancies.map(v=>`<span class="tag">${esc(v.role)} · мест: ${v.free}</span>`).join('')||'<span class="m">Нет доступных вакансий</span>'}</div></a>`}
+async function loadList(){const q=new URLSearchParams(F).toString();const {projects}=await api('GET','/projects?'+q);
+  $('#list').innerHTML=projects.length?projects.map(card).join(''):'<div class="panel m">Ничего не найдено. Измените условия или сбросьте фильтры.</div>'}
+function pCatalog(){setTimeout(loadList);
+  const f=(k)=>`oninput="F.${k}=this.value;loadList()"`;
+  return `<h1>Проекты</h1><div class="filters"><input placeholder="Поиск по названию и описанию" value="${esc(F.q)}" ${f('q')}>
+  <select ${f('category')}>${opts(CATS,F.category,'Все категории')}</select><input placeholder="Навык" value="${esc(F.skill)}" ${f('skill')}>
+  <select ${f('status')}><option value="">Любой набор</option>${Object.entries(RS).map(([k,v])=>`<option value="${k}" ${F.status==k?'selected':''}>${v}</option>`).join('')}</select>
+  <select ${f('sort')}><option value="new" ${F.sort=='new'?'selected':''}>Сначала новые</option><option value="old" ${F.sort=='old'?'selected':''}>Сначала старые</option></select>
+  <button class="g" onclick="F={...DEF};route()">Сбросить</button></div><div class="grid" id="list"></div>`}
+
+// ---- проект ----
+async function pProject(id){
+  const p=(await api('GET','/projects/'+id)).project;setTimeout(()=>p.is_author&&loadApps(id));
+  const A=p.is_author;
+  let h=`<div class="panel"><div class="row">${badge(p.status,RS[p.status])}${p.published?'':badge('pending','Черновик')}<span class="m">${esc(p.category)}</span></div>
+  <h1>${esc(p.title)}</h1><p>${esc(p.description)}</p><p><b>Цель:</b> ${esc(p.goal)}</p><p class="m">Автор: <a href="#/u/${p.author.id}">${esc(p.author.name)}</a></p>`;
+  if(A)h+=`<div class="row"><a class="btn g" href="#/edit/${id}">Редактировать</a>`+(p.published?`<button class="g" onclick="run(api('POST','/projects/${id}/recruiting',{open:${!p.open}}),'Готово')">${p.open?'Закрыть набор':'Открыть набор'}</button>`:`<button onclick="run(api('POST','/projects/${id}/publish'),'Опубликовано')">Опубликовать</button>`)+'</div>';
+  h+=`</div><div class="panel"><h3>Вакансии</h3>`+(p.vacancies.map(v=>`<div style="margin:8px 0"><b>${esc(v.role)}</b> — свободно ${v.free} из ${v.seats} ${list(v.skills)}<div class="m">${esc(v.description)}</div></div>`).join('')||'<p class="m">Вакансий нет.</p>');
+  const free=p.vacancies.filter(v=>v.free>0);
+  if(!p.apply_block)h+=`<hr><form onsubmit="event.preventDefault();run(api('POST','/projects/${id}/apply',{vacancy_id:+this.vacancy_id.value,message:this.message.value}),'Заявка отправлена')"><h3>Подать заявку</h3>
+    <select name="vacancy_id">${free.map(v=>`<option value="${v.id}">${esc(v.role)} (мест: ${v.free})</option>`).join('')}</select>
+    <textarea name="message" placeholder="Сопроводительное сообщение"></textarea><button>Отправить</button></form>`;
+  else h+=`<p class="m">${p.apply_block=='login'?'<a href="#/login">Войдите</a>, чтобы подать заявку.':BLK[p.apply_block]}</p>`;
+  h+=`</div><div class="panel"><h3>Состав</h3>`+(p.members.map(m=>`<div><a href="#/u/${m.user_id}">${esc(m.name)}</a> — ${esc(m.role)}</div>`).join('')||'<p class="m">Пока никого.</p>')+'</div>';
+  if(A)h+=`<div class="panel"><div class="row"><h3 style="margin-right:auto">Входящие заявки</h3><select id="fs" onchange="loadApps(${id})"><option value="">Все статусы</option>${Object.entries(ST).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div id="apps"></div></div>`;
+  return h}
+async function loadApps(id){const {applications:a}=await api('GET',`/projects/${id}/applications?status=${$('#fs').value}`);
+  $('#apps').innerHTML=a.map(x=>`<fieldset><div class="row"><a href="#/u/${x.user_id}"><b>${esc(x.name)}</b></a>${badge(x.status,ST[x.status])}<span class="m">→ ${esc(x.role)}</span></div>
+  <div class="m">${esc(x.bio)}</div><div>${list(x.skills)}${list(x.interests)}</div><p>«${esc(x.message)}»</p>
+  ${x.status=='pending'?`<button onclick="run(api('POST','/applications/${x.id}/accept'),'Кандидат принят')">Принять</button> <button class="r" onclick="run(api('POST','/applications/${x.id}/reject'),'Заявка отклонена')">Отклонить</button>`:''}</fieldset>`).join('')||'<p class="m">Заявок нет.</p>'}
+
+// ---- вход, профиль ----
+function pLogin(){return `<div class="grid"><form class="panel" onsubmit="event.preventDefault();run(api('POST','/login',{email:this.email.value,password:this.password.value}),0,()=>{location.hash='#/';route()})"><h3>Вход</h3><input name="email" placeholder="Email"><input name="password" type="password" placeholder="Пароль"><button>Войти</button></form>
+<form class="panel" onsubmit="event.preventDefault();const f=this;run(api('POST','/register',{email:f.email.value,name:f.name.value,password:f.password.value}).then(()=>api('POST','/login',{email:f.email.value,password:f.password.value})),'Добро пожаловать!',()=>{location.hash='#/profile';route()})"><h3>Регистрация</h3><input name="name" placeholder="Имя"><input name="email" placeholder="Email"><input name="password" type="password" placeholder="Пароль (от 6 символов)"><button>Создать аккаунт</button></form></div>`}
+function pProfile(){if(!me){location.hash='#/login';return ''}
+  return `<form class="panel" onsubmit="event.preventDefault();run(api('PUT','/me',{name:this.name.value,bio:this.bio.value,skills:this.skills.value,interests:this.interests.value}),'Профиль сохранён')"><h1>Мой профиль</h1>
+  <label>Имя</label><input name="name" value="${esc(me.name)}"><label>О себе</label><textarea name="bio">${esc(me.bio)}</textarea>
+  <label>Навыки (через запятую)</label><input name="skills" value="${esc(me.skills)}"><label>Интересы (через запятую)</label><input name="interests" value="${esc(me.interests)}"><button>Сохранить</button></form>`}
+async function pUser(id){const u=(await api('GET','/users/'+id)).user;return `<div class="panel"><h1>${esc(u.name)}</h1><p>${esc(u.bio)}</p><p><b>Навыки:</b> ${list(u.skills)}</p><p><b>Интересы:</b> ${list(u.interests)}</p></div>`}
+
+// ---- мои разделы ----
+async function pMy(){if(!me){location.hash='#/login';return ''}
+  const [{projects:P},{applications:A}]=await Promise.all([api('GET','/my/projects'),api('GET','/my/applications')]);
+  return `<h1>Мои проекты</h1>`+(P.map(p=>`<a class="card" href="#/p/${p.id}"><div class="row"><b>${esc(p.title)}</b>${p.published?badge(p.status,RS[p.status]):badge('pending','Черновик')}<span class="m">Ожидают: ${p.pending}</span></div></a>`).join('')||'<p class="m">Проектов пока нет.</p>')
+  +`<h1>Мои заявки</h1>`+(A.map(a=>`<div class="panel"><div class="row"><a href="#/p/${a.project_id}"><b>${esc(a.title)}</b></a>${badge(a.status,ST[a.status])}<span class="m">${esc(a.role)} · ${esc(a.created_at.replace('T',' '))}</span></div><p>«${esc(a.message)}»</p>
+  ${a.status=='pending'?`<button class="r" onclick="confirm('Отозвать заявку?')&&run(api('POST','/applications/${a.id}/withdraw'),'Заявка отозвана')">Отозвать</button>`:''}</div>`).join('')||'<p class="m">Заявок пока нет.</p>')}
+
+// ---- создание и редактирование ----
+const vrow=(v,k,btn='')=>`<fieldset class="vr" data-k="${k}"><input name="role" placeholder="Роль" value="${esc(v.role)}"><input name="skills" placeholder="Навыки через запятую" value="${esc(v.skills)}"><textarea name="description" placeholder="Задачи">${esc(v.description)}</textarea><label>Мест <input name="seats" type="number" step="any" value="${v.seats??1}"></label> ${btn}</fieldset>`;
+const rd=el=>({role:el.querySelector('[name=role]').value,skills:el.querySelector('[name=skills]').value,description:el.querySelector('[name=description]').value,seats:Number(el.querySelector('[name=seats]').value)});
+const addRow=()=>$('#vrows').insertAdjacentHTML('beforeend',vrow({},'n'));
+async function pForm(id){if(!me){location.hash='#/login';return ''}
+  const p=id?(await api('GET','/projects/'+id)).project:{vacancies:[],published:0};
+  if(id&&!p.is_author)throw new Error('Нет прав на этот проект');
+  const E=!!id;
+  return `<form class="panel" id="pf" onsubmit="event.preventDefault();saveProject(${id||0})"><h1>${E?'Редактирование проекта':'Новый проект'}</h1>
+  <input name="title" placeholder="Название" value="${esc(p.title)}"><textarea name="description" placeholder="Описание">${esc(p.description)}</textarea><input name="goal" placeholder="Цель или ожидаемый результат" value="${esc(p.goal)}">
+  <select name="category">${opts(CATS,p.category)}</select>
+  ${E?'':`<h3>Вакансии</h3><div id="vrows">${vrow({},'n')}</div><button type="button" class="g" onclick="addRow()">+ Вакансия</button><p><label><input type="checkbox" name="publish" checked> Опубликовать сразу</label></p>`}
+  <button>Сохранить</button></form>`+(E?`<div class="panel"><h3>Вакансии</h3>${p.vacancies.map(v=>vrow(v,v.id,`<button type="button" onclick="saveVac(${v.id},this.closest('.vr'))">Сохранить</button> <button type="button" class="r" onclick="confirm('Удалить вакансию?')&&run(api('DELETE','/vacancies/${v.id}'),'Удалено')">Удалить</button>`)).join('')}
+  <h3>Новая вакансия</h3><div id="nv">${vrow({},'n',`<button type="button" onclick="run(api('POST','/projects/${id}/vacancies',rd(this.closest('.vr'))),'Вакансия добавлена')">Добавить</button>`)}</div><a href="#/p/${id}">← К проекту</a></div>`:'')}
+const saveVac=(id,el)=>run(api('PUT','/vacancies/'+id,rd(el)),'Вакансия сохранена');
+function saveProject(id){const f=$('#pf'),b={title:f.title.value,description:f.description.value,goal:f.goal.value,category:f.category.value};
+  if(id)return run(api('PUT','/projects/'+id,b),'Сохранено');
+  b.publish=f.publish.checked;b.vacancies=[...document.querySelectorAll('#vrows .vr')].map(rd).filter(v=>v.role.trim());
+  run(api('POST','/projects',b),'Проект создан',r=>{location.hash='#/p/'+r.id})}
+</script></body></html>
