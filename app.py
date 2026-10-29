@@ -401,6 +401,14 @@ def init_db():
     c = connect(); c.execute("PRAGMA journal_mode=WAL"); c.executescript(SCHEMA); c.close()
 
 
+def db_empty():
+    if not os.path.exists(DB): return True
+    try:
+        c = connect(); n = c.execute("select count(*) from users").fetchone()[0]; c.close(); return n == 0
+    except sqlite3.Error:
+        return True
+
+
 def seed():
     """Демо-данные. Пароль всех аккаунтов: demo1234."""
     init_db(); c = connect(); t0 = datetime(2026, 10, 1, 10)
@@ -439,7 +447,7 @@ def seed():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "reset":
         seed(); print("База восстановлена:", DB); sys.exit()
-    if not os.path.exists(DB): seed()
+    if db_empty(): seed()  # нет файла, нет таблиц или нет пользователей
     port = int(os.environ.get("PORT", 8000))
     print(f"http://localhost:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
